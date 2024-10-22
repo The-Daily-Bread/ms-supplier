@@ -1,7 +1,7 @@
 package pkg
 
 import (
-	"encoding/json"
+	"context"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -9,35 +9,51 @@ import (
 	rpc_json "github.com/gorilla/rpc/json"
 )
 
-type Response struct {
-	Message string      `json:"message"`
-	Data    interface{} `json:"data";omitempty`
+type Reply struct {
+	Message string `json:"message"`
 }
 
-type Supplier struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+type Item struct {
+	Name     string  `json:"name"`
+	Price    float32 `json:"price"`
+	Quantity int     `json:"quantity"`
+}
+
+type SupplierRequest struct {
+	Name    string `json:"name"`
+	Address string `json:"address"`
+	Itens   []Item `json:"itens"`
 }
 
 type JSONServer struct{}
 type Args struct {
-	Name string
+	SupplierRequest
 }
 
-func (t *JSONServer) CreateSupplierRequest(r *http.Request, args *Args, reply *Response) error {
-	var supplier Supplier
+const url = "mongodb://root:password@localhost:27013/"
 
-	err := json.NewDecoder(r.Body).Decode(&supplier)
+func (t *JSONServer) CreateSupplierRequest(r *http.Request, args *Args, reply *Reply) error {
+	supplier := SupplierRequest{
+		Name:    args.Name,
+		Address: args.Address,
+		Itens:   args.Itens,
+	}
+
+	client, err := ConnectMongoDb(url)
 	if err != nil {
-		*reply = Response{
-			Message: err.Error(),
-		}
+		return err
 	}
 
-	*reply = Response{
-		Message: "success",
-		Data:    supplier,
+	defer client.Disconnect(context.TODO())
+
+	collection := client.Database("ms-supplier").Collection("supplier_request")
+
+	_, err = collection.InsertOne(context.TODO(), supplier)
+	if err != nil {
+		return err
 	}
+
+	reply.Message = "Supplier created: " + supplier.Name
 
 	return nil
 }
